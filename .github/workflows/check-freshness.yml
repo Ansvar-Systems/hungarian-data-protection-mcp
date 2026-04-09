@@ -1,0 +1,107 @@
+# =============================================================================
+# Check Data Freshness — Scheduled check for stale NAIH data
+# =============================================================================
+#
+# Runs weekly and on manual dispatch. Checks whether the indexed data
+# is fresh by looking at the most recent decision date in the database.
+#
+# If the data is stale (no updates in >30 days), creates a GitHub issue
+# to prompt a manual ingest run.
+#
+# =============================================================================
+
+name: Check Data Freshness
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-freshness:
+    name: Check NAIH Data Freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download latest database
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null) || true
+          if [ -z "$TAG" ]; then
+            echo "No GitHub Release found — skipping freshness check"
+            echo "SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p data
+          if gh release download "$TAG" -p "database.db.gz" -D data/ 2>/dev/null; then
+            gunzip -f data/database.db.gz
+            echo "Downloaded database from release $TAG"
+          else
+            echo "Could not download database — skipping freshness check"
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Node.js
+        if: env.SKIP != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: env.SKIP != 'true'
+        run: npm ci
+
+      - name: Check freshness
+        if: env.SKIP != 'true'
+        id: freshness
+        run: |
+          node -e "
+          const Database = require('better-sqlite3');
+          const path = require('path');
+          const db = new Database(process.env.NAIH_DB_PATH || 'data/naih.db', { readonly: true });
+          try {
+            const row = db.prepare('SELECT MAX(date) as latest FROM decisions').get();
+            const latest = row && row.latest ? new Date(row.latest) : null;
+            const now = new Date();
+            const daysSince = latest ? Math.floor((now - latest) / 86400000) : 999;
+            console.log('Latest decision date:', latest ? latest.toISOString().slice(0,10) : 'unknown');
+            console.log('Days since last update:', daysSince);
+            if (daysSince > 30) {
+              console.log('STATUS=stale');
+              process.stdout.write('stale');
+            } else {
+              console.log('STATUS=fresh');
+              process.stdout.write('fresh');
+            }
+          } finally {
+            db.close();
+          }
+          " > /tmp/freshness_status.txt 2>&1 || true
+          cat /tmp/freshness_status.txt
+          STATUS=$(tail -1 /tmp/freshness_status.txt)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Create issue if stale
+        if: env.SKIP != 'true' && steps.freshness.outputs.status == 'stale'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh issue list --label "data-freshness" --state open --json number -q '.[0].number' 2>/dev/null) || true
+          if [ -n "$EXISTING" ]; then
+            echo "Stale data issue already open (#$EXISTING) — skipping"
+          else
+            gh issue create \
+              --title "Data freshness: NAIH index may be stale (>30 days)" \
+              --body "The NAIH database has not been updated in over 30 days. Please run the ingest workflow or trigger it manually via \`npm run ingest\`." \
+              --label "data-freshness"
+          fi

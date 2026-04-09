@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "authority": {
+    "id": "naih",
+    "name": "Nemzeti Adatvédelmi és Információszabadság Hatóság",
+    "short_name": "NAIH",
+    "country": "HU",
+    "url": "https://naih.hu/",
+    "role": "Hungarian national supervisory authority under GDPR Article 51"
+  },
+  "sources": [
+    {
+      "id": "naih_decisions",
+      "name": "NAIH Határozatok",
+      "type": "decisions",
+      "url": "https://naih.hu/",
+      "description": "Formal decisions, sanctions (bírságok), and warnings (figyelmeztetések)",
+      "coverage_start": "2018-05-25",
+      "coverage_note": "GDPR era only; pre-2018 Adatvédelmi Biztos decisions not included"
+    },
+    {
+      "id": "naih_guidelines",
+      "name": "NAIH Tájékoztatók és Iránymutatások",
+      "type": "guidelines",
+      "url": "https://naih.hu/",
+      "description": "Guidance documents, recommendations (iránymutatások), and position papers (állásfoglalások)",
+      "coverage_start": "2018-05-25"
+    }
+  ],
+  "topics": [
+    { "id": "consent", "hu": "Hozzájárulás", "en": "Consent" },
+    { "id": "cookies", "hu": "Sütik", "en": "Cookies" },
+    { "id": "transfers", "hu": "Adattovábbítás", "en": "International transfers" },
+    { "id": "dpia", "hu": "Adatvédelmi hatásvizsgálat", "en": "DPIA" },
+    { "id": "breach_notification", "hu": "Adatvédelmi incidens bejelentés", "en": "Breach notification" },
+    { "id": "privacy_by_design", "hu": "Beépített adatvédelem", "en": "Privacy by design" },
+    { "id": "employee_monitoring", "hu": "Munkahelyi adatvédelem", "en": "Employee monitoring" },
+    { "id": "health_data", "hu": "Egészségügyi adatok", "en": "Health data" },
+    { "id": "children", "hu": "Gyermekek adatai", "en": "Children's data" }
+  ],
+  "not_covered": [
+    "Decisions by the predecessor authority (Adatvédelmi Biztos, pre-2018)",
+    "Court appeals of NAIH decisions",
+    "EDPB and CJEU case law",
+    "Hungarian sector-specific regulators (MNB, NMHH, etc.)",
+    "Real-time updates"
+  ]
+}
