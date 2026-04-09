@@ -1,0 +1,110 @@
+# =============================================================================
+# Ingest — Scrape NAIH and publish updated database as a GitHub Release
+# =============================================================================
+#
+# Runs on manual dispatch or on a monthly schedule.
+# Scrapes naih.hu for new decisions and guidelines, rebuilds the SQLite
+# database, and attaches it as database.db.gz to a GitHub Release.
+#
+# The GHCR build workflow downloads the database from the latest release
+# when building the Docker image.
+#
+# =============================================================================
+
+name: Ingest NAIH Data
+
+on:
+  schedule:
+    # First day of every month at 03:00 UTC
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: 'Force full re-scrape (ignores incremental state)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  ingest:
+    name: Scrape and Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Download existing database (for incremental ingest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p data
+          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null) || true
+          if [ -n "$TAG" ] && [ "${{ inputs.full_refresh }}" != "true" ]; then
+            echo "Downloading existing database from release $TAG for incremental ingest..."
+            if gh release download "$TAG" -p "database.db.gz" -D data/ 2>/dev/null; then
+              gunzip -f data/database.db.gz
+              echo "Existing database downloaded ($(du -sh data/naih.db | cut -f1))"
+            else
+              echo "No existing database found — starting fresh"
+            fi
+          else
+            echo "Starting fresh (full refresh or no existing release)"
+          fi
+
+      - name: Run ingest
+        run: npm run ingest
+        env:
+          NAIH_DB_PATH: data/naih.db
+
+      - name: Compress database
+        run: |
+          gzip -k -f data/naih.db
+          mv data/naih.db.gz data/database.db.gz
+          echo "Compressed database: $(du -sh data/database.db.gz | cut -f1)"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          TAG="data-$DATE"
+          TITLE="NAIH Database $DATE"
+
+          # Delete existing release with same tag if present
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git push origin --delete "refs/tags/$TAG" 2>/dev/null || true
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "Automated NAIH data ingest — $(date -u +%Y-%m-%d)" \
+            --latest \
+            data/database.db.gz
+
+          echo "Published release $TAG with updated database"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Ingest Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f data/naih.db ]; then
+            echo "- Database size: $(du -sh data/naih.db | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- Completed at: $(date -u)" >> "$GITHUB_STEP_SUMMARY"

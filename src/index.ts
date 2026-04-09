@@ -43,6 +43,16 @@ try {
 
 const SERVER_NAME = "hungarian-data-protection-mcp";
 
+const RESPONSE_META = {
+  disclaimer:
+    "Informational only — not legal advice. Always verify with the official NAIH source at naih.hu.",
+  data_age:
+    "Periodically scraped from naih.hu; content may lag official publications.",
+  copyright:
+    "© Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH). Reproduced for research and informational purposes.",
+  source_url: "https://naih.hu/",
+};
+
 // --- Tool definitions ---------------------------------------------------------
 
 const TOOLS = [
@@ -143,6 +153,26 @@ const TOOLS = [
     },
   },
   {
+    name: "hu_dp_list_sources",
+    description:
+      "List all data sources indexed by this MCP server, including URLs and coverage details.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "hu_dp_check_data_freshness",
+    description:
+      "Check the freshness of the indexed NAIH data: when it was last scraped and whether it may be stale.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "hu_dp_about",
     description: "Return metadata about this MCP server: version, data source, coverage, and tool list.",
     inputSchema: {
@@ -187,9 +217,14 @@ function textContent(data: unknown) {
   };
 }
 
-function errorContent(message: string) {
+function errorContent(message: string, errorType = "tool_error") {
   return {
-    content: [{ type: "text" as const, text: message }],
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({ error: message, _error_type: errorType }, null, 2),
+      },
+    ],
     isError: true as const,
   };
 }
@@ -218,14 +253,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           topic: parsed.topic,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const resultsWithCitation = results.map((r) => {
+          const d = r as Record<string, unknown>;
+          return {
+            ...r,
+            _citation: buildCitation(
+              String(d.reference ?? ""),
+              String(d.title ?? d.reference ?? ""),
+              "hu_dp_get_decision",
+              { reference: String(d.reference ?? "") },
+              d.url as string | undefined,
+            ),
+          };
+        });
+        return textContent({ results: resultsWithCitation, count: results.length, _meta: RESPONSE_META });
       }
 
       case "hu_dp_get_decision": {
         const parsed = GetDecisionArgs.parse(args);
         const decision = getDecision(parsed.reference);
         if (!decision) {
-          return errorContent(`Decision not found: ${parsed.reference}`);
+          return errorContent(`Decision not found: ${parsed.reference}`, "not_found");
         }
         const d = decision as Record<string, unknown>;
         return textContent({
@@ -237,6 +285,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             { reference: parsed.reference },
             d.url as string | undefined,
           ),
+          _meta: RESPONSE_META,
         });
       }
 
@@ -248,14 +297,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           topic: parsed.topic,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const resultsWithCitation = results.map((r) => {
+          const g = r as Record<string, unknown>;
+          return {
+            ...r,
+            _citation: buildCitation(
+              String(g.reference ?? g.title ?? `Guideline #${g.id}`),
+              String(g.title ?? g.reference ?? `Guideline #${g.id}`),
+              "hu_dp_get_guideline",
+              { id: String(g.id ?? "") },
+              g.url as string | undefined,
+            ),
+          };
+        });
+        return textContent({ results: resultsWithCitation, count: results.length, _meta: RESPONSE_META });
       }
 
       case "hu_dp_get_guideline": {
         const parsed = GetGuidelineArgs.parse(args);
         const guideline = getGuideline(parsed.id);
         if (!guideline) {
-          return errorContent(`Guideline not found: id=${parsed.id}`);
+          return errorContent(`Guideline not found: id=${parsed.id}`, "not_found");
         }
         const g = guideline as Record<string, unknown>;
         return textContent({
@@ -267,12 +329,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             { id: String(parsed.id) },
             g.url as string | undefined,
           ),
+          _meta: RESPONSE_META,
         });
       }
 
       case "hu_dp_list_topics": {
         const topics = listTopics();
-        return textContent({ topics, count: topics.length });
+        return textContent({ topics, count: topics.length, _meta: RESPONSE_META });
+      }
+
+      case "hu_dp_list_sources": {
+        return textContent({
+          sources: [
+            {
+              id: "naih_decisions",
+              name: "NAIH Határozatok (Decisions)",
+              url: "https://naih.hu/",
+              description:
+                "NAIH formal decisions, sanctions (bírságok), and warnings (figyelmeztetések) issued under GDPR and Hungarian data protection law.",
+              type: "decisions",
+            },
+            {
+              id: "naih_guidelines",
+              name: "NAIH Tájékoztatók és Iránymutatások (Guidelines)",
+              url: "https://naih.hu/",
+              description:
+                "NAIH guidance documents, recommendations (iránymutatások), and position papers (állásfoglalások).",
+              type: "guidelines",
+            },
+          ],
+          _meta: RESPONSE_META,
+        });
+      }
+
+      case "hu_dp_check_data_freshness": {
+        return textContent({
+          status: "unknown",
+          note: "Automated freshness tracking not yet configured. Data is periodically scraped from naih.hu.",
+          source_url: "https://naih.hu/",
+          recommendation: "Run the ingest script to refresh data: npm run ingest",
+          _meta: RESPONSE_META,
+        });
       }
 
       case "hu_dp_about": {
@@ -288,15 +385,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             topics: "Consent, cookies, transfers, DPIA (adatvédelmi hatásvizsgálat), breach notification, privacy by design, employee monitoring (munkahelyi adatvédelem), health data, children",
           },
           tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
+          _meta: RESPONSE_META,
         });
       }
 
       default:
-        return errorContent(`Unknown tool: ${name}`);
+        return errorContent(`Unknown tool: ${name}`, "unknown_tool");
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return errorContent(`Error executing ${name}: ${message}`);
+    return errorContent(`Error executing ${name}: ${message}`, "internal_error");
   }
 });
 
