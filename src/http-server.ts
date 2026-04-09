@@ -212,7 +212,7 @@ function createMcpServer(): Server {
             limit: parsed.limit,
           });
           const resultsWithCitation = results.map((r) => {
-            const d = r as Record<string, unknown>;
+            const d = r as unknown as Record<string, unknown>;
             return {
               ...r,
               _citation: buildCitation(
@@ -233,7 +233,7 @@ function createMcpServer(): Server {
           if (!decision) {
             return errorContent(`Decision not found: ${parsed.reference}`, "not_found");
           }
-          const d = decision as Record<string, unknown>;
+          const d = decision as unknown as Record<string, unknown>;
           return textContent({
             ...decision,
             _citation: buildCitation(
@@ -256,7 +256,7 @@ function createMcpServer(): Server {
             limit: parsed.limit,
           });
           const resultsWithCitation = results.map((r) => {
-            const g = r as Record<string, unknown>;
+            const g = r as unknown as Record<string, unknown>;
             return {
               ...r,
               _citation: buildCitation(
@@ -277,7 +277,7 @@ function createMcpServer(): Server {
           if (!guideline) {
             return errorContent(`Guideline not found: id=${parsed.id}`, "not_found");
           }
-          const g = guideline as Record<string, unknown>;
+          const g = guideline as unknown as Record<string, unknown>;
           return textContent({
             ...guideline,
             _citation: buildCitation(

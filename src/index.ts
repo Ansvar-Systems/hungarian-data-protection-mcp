@@ -254,7 +254,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           limit: parsed.limit,
         });
         const resultsWithCitation = results.map((r) => {
-          const d = r as Record<string, unknown>;
+          const d = r as unknown as Record<string, unknown>;
           return {
             ...r,
             _citation: buildCitation(
@@ -275,7 +275,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!decision) {
           return errorContent(`Decision not found: ${parsed.reference}`, "not_found");
         }
-        const d = decision as Record<string, unknown>;
+        const d = decision as unknown as Record<string, unknown>;
         return textContent({
           ...decision,
           _citation: buildCitation(
@@ -298,7 +298,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           limit: parsed.limit,
         });
         const resultsWithCitation = results.map((r) => {
-          const g = r as Record<string, unknown>;
+          const g = r as unknown as Record<string, unknown>;
           return {
             ...r,
             _citation: buildCitation(
@@ -319,7 +319,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!guideline) {
           return errorContent(`Guideline not found: id=${parsed.id}`, "not_found");
         }
-        const g = guideline as Record<string, unknown>;
+        const g = guideline as unknown as Record<string, unknown>;
         return textContent({
           ...guideline,
           _citation: buildCitation(
