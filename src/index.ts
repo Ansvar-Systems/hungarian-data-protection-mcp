@@ -227,7 +227,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!decision) {
           return errorContent(`Decision not found: ${parsed.reference}`);
         }
-        const d = decision as Record<string, unknown>;
+        const d = decision as unknown as Record<string, unknown>;
         return textContent({
           ...decision,
           _citation: buildCitation(
@@ -257,7 +257,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!guideline) {
           return errorContent(`Guideline not found: id=${parsed.id}`);
         }
-        const g = guideline as Record<string, unknown>;
+        const g = guideline as unknown as Record<string, unknown>;
         return textContent({
           ...guideline,
           _citation: buildCitation(
