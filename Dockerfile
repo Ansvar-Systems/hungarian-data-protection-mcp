@@ -6,14 +6,18 @@
 #
 # The image expects a pre-built database at /app/data/naih.db.
 # Override with NAIH_DB_PATH for a custom location.
+#
+# Multi-stage: stage 1 builds TS + runs better-sqlite3 postinstall (binding);
+# stage 2 reuses node_modules from builder so the native binding survives.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- Stage 1: Build TypeScript ---
+# --- Stage 1: Build TypeScript + native deps ---
 FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+# Run npm ci WITHOUT --ignore-scripts so better-sqlite3 postinstall fetches the binding
+RUN npm ci
 COPY tsconfig.json ./
 COPY src/ src/
 RUN npm run build
@@ -25,10 +29,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NAIH_DB_PATH=/app/data/naih.db
 
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
-
+# Reuse node_modules from builder so better-sqlite3's native binding survives
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist/ dist/
+COPY package.json ./
+
+# Copy provisioned database (CI's "Provision database" step gunzips
+# database.db.gz from the GitHub Release into data/database.db)
+COPY data/database.db data/naih.db
 
 # Non-root user for security
 RUN addgroup --system --gid 1001 mcp && \
